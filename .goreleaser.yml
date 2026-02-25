@@ -1,0 +1,77 @@
+version: 2
+
+project_name: bmx
+
+before:
+  hooks:
+    - mise test
+
+builds:
+  - id: bmx
+    main: ./cmd/bmx
+    binary: bmx
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+
+brews:
+  - name: bmx
+    description: "CLI wrapper for platform-specific sandboxes"
+    homepage: "https://github.com/UsingCoding/bmx"
+    license: "MIT"
+    repository:
+      owner: UsingCoding
+      name: homebrew-public
+    dependencies:
+      - name: go
+        type: build
+    install: |
+      ldflags = %W[
+        -s -w
+        -X main.version=#{version}
+        -X main.commit=homebrew
+      ]
+      system "go", "build", *std_go_args(ldflags: ldflags, output: bin/"bmx"), "./cmd/bmx"
+
+archives:
+  - files:
+      - LICENSE*
+      - README*
+      - go.mod
+      - go.sum
+      - cmd/**
+      - internal/**
+      - registry/**
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+
+checksum:
+  name_template: 'checksums.txt'
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^ci:'
+      - '^version-increment:'
+
+release:
+  github:
+    owner: UsingCoding
+    name: bmx
