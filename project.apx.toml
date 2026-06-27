@@ -1,4 +1,0 @@
-[policy]
-fs.denyPaths = [
-    "LICENSE" # disallow read license ¯\_(ツ)_/¯
-]
