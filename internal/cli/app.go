@@ -82,11 +82,9 @@ func convergeCommand() *cli.Command {
 					StatePath:  resolved.StatePath,
 					ListName:   cmd.String("list"),
 				},
-				Managers: backend.Registry{
-					"brew": brewbackend.New(),
-				},
-				In:  os.Stdin,
-				Out: os.Stdout,
+				Managers: defaultRegistry(),
+				In:       os.Stdin,
+				Out:      os.Stdout,
 			})
 		},
 	}
@@ -144,6 +142,14 @@ func addCommand() *cli.Command {
 				Out:        os.Stdout,
 			})
 		},
+	}
+}
+
+func defaultRegistry() backend.Registry {
+	brewManager := brewbackend.New()
+	return backend.Registry{
+		"brew":      brewManager,
+		"brew-cask": brewManager,
 	}
 }
 

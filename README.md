@@ -70,6 +70,22 @@ bmx converge [--config PATH] [--state PATH] [--list NAME]
 bmx version
 ```
 
+## Build
+
+Preferred:
+
+```bash
+mise run build
+```
+
+This creates a snapshot binary in `./dist/bmx`.
+
+Direct Go run during development:
+
+```bash
+go run ./cmd/bmx
+```
+
 ## Package Format
 
 - Homebrew formula: `brew:docker`

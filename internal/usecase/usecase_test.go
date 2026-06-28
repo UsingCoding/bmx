@@ -128,6 +128,36 @@ func TestConvergeAppliesPlanAndWritesState(t *testing.T) {
 	}
 }
 
+func TestConvergeSupportsBrewCaskThroughBrewManager(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "bmxfile.toml")
+	statePath := filepath.Join(dir, "bmxfile.state.toml")
+
+	cfg := config.File{
+		Lists:  []config.List{{Name: "macos", Groups: []string{"gui"}}},
+		Groups: []config.Group{{Name: "gui", Apps: []config.AppEntry{{App: mustApp(t, "brew-cask:gimp")}}}},
+	}
+	if err := config.Write(configPath, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	mgr := &fakeManager{}
+	err := Converge(context.Background(), ConvergeInput{
+		PlanInput: PlanInput{ConfigPath: configPath, StatePath: statePath, ListName: "macos"},
+		Managers:  backend.Registry{"brew-cask": mgr},
+		In:        strings.NewReader("y\n"),
+		Out:       &bytes.Buffer{},
+	})
+	if err != nil {
+		t.Fatalf("Converge() error = %v", err)
+	}
+	if len(mgr.installs) != 1 || mgr.installs[0].Name != "brew-cask:gimp" {
+		t.Fatalf("unexpected cask installs: %+v", mgr.installs)
+	}
+}
+
 func TestConvergeDoesNotWriteStateOnFailure(t *testing.T) {
 	t.Parallel()
 

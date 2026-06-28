@@ -65,6 +65,13 @@ go run ./cmd/bmx ls --config ./bmxfile.toml
 go run ./cmd/bmx converge --config ./bmxfile.toml --state ./bmxfile.state.toml --list macos
 ```
 
+
+## Build, Test, and Verification Preference
+
+- Prefer `mise` tasks over direct tool calls for build, test, lint, and change verification.
+- Use `mise run build` instead of invoking GoReleaser directly.
+- Use `mise run test:go-test` and `mise run test:lint` for routine verification.
+- Use direct `go test` or `go run` only when a narrow targeted check is more appropriate than the repo-level `mise` task.
 ## Code Conventions & Common Patterns
 
 - Formatting/linting: `gofmt` + `goimports` with local prefix `github.com/UsingCoding/bmx`; strict `golangci-lint` config in `.golangci.yml`.
