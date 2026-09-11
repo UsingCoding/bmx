@@ -9,6 +9,8 @@ import (
 	"github.com/UsingCoding/bmx/internal/model"
 )
 
+const coreGroup = "core"
+
 func TestLoadParsesListsGroupsAndObjectApps(t *testing.T) {
 	t.Parallel()
 
@@ -86,9 +88,9 @@ func TestResolveListDeduplicatesApps(t *testing.T) {
 	}
 
 	cfg := File{
-		Lists: []List{{Name: "macos", Groups: []string{"core", "desktop"}}},
+		Lists: []List{{Name: "macos", Groups: []string{coreGroup, "desktop"}}},
 		Groups: []Group{
-			{Name: "core", Apps: []AppEntry{{App: docker}}},
+			{Name: coreGroup, Apps: []AppEntry{{App: docker}}},
 			{Name: "desktop", Apps: []AppEntry{{App: docker}, {App: gimp}}},
 		},
 	}
@@ -110,7 +112,7 @@ func TestValidateRejectsUnknownGroup(t *testing.T) {
 
 	cfg := File{
 		Lists:  []List{{Name: "macos", Groups: []string{"missing"}}},
-		Groups: []Group{{Name: "core"}},
+		Groups: []Group{{Name: coreGroup}},
 	}
 
 	if err := Validate(cfg); err == nil {

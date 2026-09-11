@@ -16,6 +16,11 @@ import (
 	"github.com/UsingCoding/bmx/internal/state"
 )
 
+const (
+	coreGroup = "core"
+	macosList = "macos"
+)
+
 type fakeManager struct {
 	installs   []model.App
 	uninstalls []model.App
@@ -94,8 +99,8 @@ func TestConvergeAppliesPlanAndWritesState(t *testing.T) {
 	statePath := filepath.Join(dir, "bmxfile.state.toml")
 
 	cfg := config.File{
-		Lists:  []config.List{{Name: "macos", Groups: []string{"core"}}},
-		Groups: []config.Group{{Name: "core", Apps: []config.AppEntry{{App: mustApp(t, "brew:docker")}}}},
+		Lists:  []config.List{{Name: macosList, Groups: []string{coreGroup}}},
+		Groups: []config.Group{{Name: coreGroup, Apps: []config.AppEntry{{App: mustApp(t, "brew:docker")}}}},
 	}
 	if err := config.Write(configPath, cfg); err != nil {
 		t.Fatal(err)
@@ -104,7 +109,7 @@ func TestConvergeAppliesPlanAndWritesState(t *testing.T) {
 	mgr := &fakeManager{}
 	out := &bytes.Buffer{}
 	err := Converge(context.Background(), ConvergeInput{
-		PlanInput: PlanInput{ConfigPath: configPath, StatePath: statePath, ListName: "macos"},
+		PlanInput: PlanInput{ConfigPath: configPath, StatePath: statePath, ListName: macosList},
 		Managers:  backend.Registry{"brew": mgr},
 		In:        strings.NewReader("y\n"),
 		Out:       out,
@@ -120,7 +125,7 @@ func TestConvergeAppliesPlanAndWritesState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.ActiveList != "macos" {
+	if st.ActiveList != macosList {
 		t.Fatalf("unexpected active list: %q", st.ActiveList)
 	}
 	if got := st.InstalledApps(); len(got) != 1 || got[0].Name != "brew:docker" {
@@ -136,7 +141,7 @@ func TestConvergeSupportsBrewCaskThroughBrewManager(t *testing.T) {
 	statePath := filepath.Join(dir, "bmxfile.state.toml")
 
 	cfg := config.File{
-		Lists:  []config.List{{Name: "macos", Groups: []string{"gui"}}},
+		Lists:  []config.List{{Name: macosList, Groups: []string{"gui"}}},
 		Groups: []config.Group{{Name: "gui", Apps: []config.AppEntry{{App: mustApp(t, "brew-cask:gimp")}}}},
 	}
 	if err := config.Write(configPath, cfg); err != nil {
@@ -145,7 +150,7 @@ func TestConvergeSupportsBrewCaskThroughBrewManager(t *testing.T) {
 
 	mgr := &fakeManager{}
 	err := Converge(context.Background(), ConvergeInput{
-		PlanInput: PlanInput{ConfigPath: configPath, StatePath: statePath, ListName: "macos"},
+		PlanInput: PlanInput{ConfigPath: configPath, StatePath: statePath, ListName: macosList},
 		Managers:  backend.Registry{"brew-cask": mgr},
 		In:        strings.NewReader("y\n"),
 		Out:       &bytes.Buffer{},
@@ -166,14 +171,14 @@ func TestConvergeDoesNotWriteStateOnFailure(t *testing.T) {
 	statePath := filepath.Join(dir, "bmxfile.state.toml")
 
 	cfg := config.File{
-		Lists:  []config.List{{Name: "macos", Groups: []string{"core"}}},
-		Groups: []config.Group{{Name: "core", Apps: []config.AppEntry{{App: mustApp(t, "brew:docker")}}}},
+		Lists:  []config.List{{Name: macosList, Groups: []string{coreGroup}}},
+		Groups: []config.Group{{Name: coreGroup, Apps: []config.AppEntry{{App: mustApp(t, "brew:docker")}}}},
 	}
 	if err := config.Write(configPath, cfg); err != nil {
 		t.Fatal(err)
 	}
 
-	original := state.FromApps("macos", []model.App{mustApp(t, "brew:lazygit")})
+	original := state.FromApps(macosList, []model.App{mustApp(t, "brew:lazygit")})
 	if err := state.Write(statePath, original); err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +189,7 @@ func TestConvergeDoesNotWriteStateOnFailure(t *testing.T) {
 
 	mgr := &fakeManager{installErr: errors.New("boom")}
 	err = Converge(context.Background(), ConvergeInput{
-		PlanInput: PlanInput{ConfigPath: configPath, StatePath: statePath, ListName: "macos"},
+		PlanInput: PlanInput{ConfigPath: configPath, StatePath: statePath, ListName: macosList},
 		Managers:  backend.Registry{"brew": mgr},
 		In:        strings.NewReader("y\n"),
 		Out:       &bytes.Buffer{},
@@ -208,8 +213,8 @@ func TestAddDuplicateDoesNotModifyConfig(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "bmxfile.toml")
 	cfg := config.File{
-		Lists:  []config.List{{Name: "macos", Groups: []string{"core"}}},
-		Groups: []config.Group{{Name: "core", Apps: []config.AppEntry{{App: mustApp(t, "brew:codex")}}}},
+		Lists:  []config.List{{Name: macosList, Groups: []string{coreGroup}}},
+		Groups: []config.Group{{Name: coreGroup, Apps: []config.AppEntry{{App: mustApp(t, "brew:codex")}}}},
 	}
 	if err := config.Write(configPath, cfg); err != nil {
 		t.Fatal(err)
@@ -219,7 +224,7 @@ func TestAddDuplicateDoesNotModifyConfig(t *testing.T) {
 	if err := Add(context.Background(), AddInput{
 		ConfigPath: configPath,
 		AppName:    "brew:codex",
-		GroupName:  "core",
+		GroupName:  coreGroup,
 		In:         strings.NewReader(""),
 		Out:        out,
 	}); err != nil {
