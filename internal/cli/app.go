@@ -44,6 +44,14 @@ func configFlag() cli.Flag {
 	return &cli.StringFlag{Name: "config", Usage: "Path to bmxfile.toml"}
 }
 
+func convergeFlag() cli.Flag {
+	return &cli.BoolFlag{
+		Name:    "converge",
+		Aliases: []string{"cv"},
+		Usage:   "Converge after updating desired config",
+	}
+}
+
 func initCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "init",
@@ -78,18 +86,21 @@ func convergeCommand() *cli.Command {
 				return err
 			}
 
-			return usecase.Converge(ctx, usecase.ConvergeInput{
-				PlanInput: usecase.PlanInput{
-					ConfigPath: resolved.ConfigPath,
-					StatePath:  resolved.StatePath,
-					ListName:   cmd.String("list"),
-				},
-				Managers: defaultRegistry(os.Stderr),
-				In:       os.Stdin,
-				Out:      os.Stdout,
-			})
+			return runConverge(ctx, resolved, cmd.String("list"))
 		},
 	}
+}
+func runConverge(ctx context.Context, resolved paths.Resolved, listName string) error {
+	return usecase.Converge(ctx, usecase.ConvergeInput{
+		PlanInput: usecase.PlanInput{
+			ConfigPath: resolved.ConfigPath,
+			StatePath:  resolved.StatePath,
+			ListName:   listName,
+		},
+		Managers: defaultRegistry(os.Stderr),
+		In:       os.Stdin,
+		Out:      os.Stdout,
+	})
 }
 
 func listCommand() *cli.Command {
@@ -120,7 +131,7 @@ func listCommand() *cli.Command {
 }
 
 func addCommand() *cli.Command {
-	flags := append(commonPathFlags(), &cli.StringFlag{Name: "group", Usage: "Group to receive the app"})
+	flags := append(commonPathFlags(), &cli.StringFlag{Name: "group", Usage: "Group to receive the app"}, convergeFlag())
 	return &cli.Command{
 		Name:      "add",
 		Usage:     "Add package to desired config",
@@ -136,19 +147,26 @@ func addCommand() *cli.Command {
 				return err
 			}
 
-			return usecase.Add(ctx, usecase.AddInput{
+			if err := usecase.Add(ctx, usecase.AddInput{
 				ConfigPath: resolved.ConfigPath,
 				AppName:    cmd.Args().First(),
 				GroupName:  cmd.String("group"),
 				In:         os.Stdin,
 				Out:        os.Stdout,
-			})
+			}); err != nil {
+				return err
+			}
+			if !cmd.Bool("converge") {
+				return nil
+			}
+
+			return runConverge(ctx, resolved, "")
 		},
 	}
 }
 
 func removeCommand() *cli.Command {
-	flags := append(commonPathFlags(), &cli.StringFlag{Name: "group", Usage: "Group containing the app"})
+	flags := append(commonPathFlags(), &cli.StringFlag{Name: "group", Usage: "Group containing the app"}, convergeFlag())
 	return &cli.Command{
 		Name:      "rm",
 		Aliases:   []string{"remove"},
@@ -165,13 +183,20 @@ func removeCommand() *cli.Command {
 				return err
 			}
 
-			return usecase.Remove(ctx, usecase.RemoveInput{
+			if err := usecase.Remove(ctx, usecase.RemoveInput{
 				ConfigPath: resolved.ConfigPath,
 				AppName:    cmd.Args().First(),
 				GroupName:  cmd.String("group"),
 				In:         os.Stdin,
 				Out:        os.Stdout,
-			})
+			}); err != nil {
+				return err
+			}
+			if !cmd.Bool("converge") {
+				return nil
+			}
+
+			return runConverge(ctx, resolved, "")
 		},
 	}
 }

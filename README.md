@@ -34,9 +34,10 @@ Creates a starter `bmxfile.toml`.
 bmx add brew:age
 bmx add brew:custom/formula
 bmx add brew-cask:gimp
+bmx add brew:age --converge
 ```
 
-Adds the package to your config and reminds you to run `converge`.
+Adds the package to your config and reminds you to run `converge`. With `--converge` (or `-cv`), it immediately runs the same plan and approval workflow as `bmx converge`.
 
 ### See what is configured
 
@@ -64,11 +65,12 @@ bmx converge --list macos
 
 ```bash
 bmx init [--config PATH]
-bmx add <manager:package> [--config PATH] [--group NAME]
+bmx add <manager:package> [--config PATH] [--state PATH] [--group NAME] [--converge|-cv]
+bmx rm <manager:package> [--config PATH] [--state PATH] [--group NAME] [--converge|-cv]
+bmx remove <manager:package> [--config PATH] [--state PATH] [--group NAME] [--converge|-cv]
 bmx ls [list-name] [--config PATH]
 bmx converge [--config PATH] [--state PATH] [--list NAME]
 bmx version
-```
 
 ## Build
 
