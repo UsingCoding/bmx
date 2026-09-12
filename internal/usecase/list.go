@@ -6,6 +6,8 @@ import (
 	"io"
 	"strings"
 
+	"github.com/manifoldco/promptui"
+
 	"github.com/UsingCoding/bmx/internal/config"
 )
 
@@ -13,6 +15,7 @@ type ListInput struct {
 	ConfigPath string
 	ListName   string
 	Out        io.Writer
+	UseStyles  bool
 }
 
 func List(ctx context.Context, input ListInput) error {
@@ -27,25 +30,65 @@ func List(ctx context.Context, input ListInput) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(input.Out, "List %s\n", input.ListName)
+		fmt.Fprintf(input.Out, "%s %s\n", listHeading(input.UseStyles, "List"), listName(input.UseStyles, input.ListName))
 		for _, app := range apps {
-			fmt.Fprintf(input.Out, "- %s\n", app.Name)
+			fmt.Fprintf(input.Out, "- %s\n", appName(input.UseStyles, app.Name))
 		}
 		return nil
 	}
 
-	fmt.Fprintln(input.Out, "Lists:")
+	fmt.Fprintln(input.Out, listHeading(input.UseStyles, "Lists:"))
 	for _, list := range cfg.Lists {
-		fmt.Fprintf(input.Out, "- %s: %s\n", list.Name, strings.Join(list.Groups, ", "))
+		fmt.Fprintf(input.Out, "- %s: %s\n", listName(input.UseStyles, list.Name), groupNames(input.UseStyles, list.Groups))
 	}
 
-	fmt.Fprintln(input.Out, "Groups:")
+	fmt.Fprintln(input.Out, groupHeading(input.UseStyles, "Groups:"))
 	for _, group := range cfg.Groups {
-		fmt.Fprintf(input.Out, "- %s\n", group.Name)
+		fmt.Fprintf(input.Out, "- %s\n", listName(input.UseStyles, group.Name))
 		for _, app := range group.Apps {
-			fmt.Fprintf(input.Out, "  - %s\n", app.App.Name)
+			fmt.Fprintf(input.Out, "  - %s\n", appName(input.UseStyles, app.App.Name))
 		}
 	}
 
 	return nil
+}
+
+func listHeading(useStyles bool, value string) string {
+	if !useStyles {
+		return value
+	}
+	return promptui.Styler(promptui.FGCyan)(value)
+}
+
+func groupHeading(useStyles bool, value string) string {
+	if !useStyles {
+		return value
+	}
+	return promptui.Styler(promptui.FGMagenta)(value)
+}
+
+func listName(useStyles bool, value string) string {
+	if !useStyles {
+		return value
+	}
+	return promptui.Styler(promptui.FGItalic)(value)
+}
+
+func appName(useStyles bool, value string) string {
+	if !useStyles {
+		return value
+	}
+	return promptui.Styler(promptui.FGBold)(value)
+}
+
+func groupNames(useStyles bool, groups []string) string {
+	if !useStyles {
+		return strings.Join(groups, ", ")
+	}
+
+	styled := make([]string, len(groups))
+	for idx, group := range groups {
+		styled[idx] = listName(true, group)
+	}
+	return strings.Join(styled, ", ")
 }

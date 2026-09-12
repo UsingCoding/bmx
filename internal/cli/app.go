@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/urfave/cli/v3"
@@ -83,7 +84,7 @@ func convergeCommand() *cli.Command {
 					StatePath:  resolved.StatePath,
 					ListName:   cmd.String("list"),
 				},
-				Managers: defaultRegistry(),
+				Managers: defaultRegistry(os.Stderr),
 				In:       os.Stdin,
 				Out:      os.Stdout,
 			})
@@ -108,11 +109,11 @@ func listCommand() *cli.Command {
 			if listName == "" && cmd.Args().Len() > 0 {
 				listName = cmd.Args().First()
 			}
-
 			return usecase.List(ctx, usecase.ListInput{
 				ConfigPath: resolved.ConfigPath,
 				ListName:   listName,
 				Out:        os.Stdout,
+				UseStyles:  useStyles(os.Stdout),
 			})
 		},
 	}
@@ -175,12 +176,17 @@ func removeCommand() *cli.Command {
 	}
 }
 
-func defaultRegistry() backend.Registry {
-	brewManager := brewbackend.New()
+func defaultRegistry(traceOut io.Writer) backend.Registry {
+	brewManager := brewbackend.New(traceOut)
 	return backend.Registry{
 		"brew":      brewManager,
 		"brew-cask": brewManager,
 	}
+}
+
+func useStyles(out *os.File) bool {
+	info, err := out.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0 && os.Getenv("NO_COLOR") == ""
 }
 
 func versionCommand(version, commit string) *cli.Command {

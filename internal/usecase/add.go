@@ -1,12 +1,9 @@
 package usecase
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"io"
-	"strconv"
-	"strings"
 
 	"github.com/UsingCoding/bmx/internal/config"
 	"github.com/UsingCoding/bmx/internal/model"
@@ -67,21 +64,10 @@ func chooseGroup(cfg config.File, explicit string, in io.Reader, out io.Writer) 
 		return 0, nil
 	}
 
-	fmt.Fprintln(out, "Select group:")
+	items := make([]string, len(cfg.Groups))
 	for idx, group := range cfg.Groups {
-		fmt.Fprintf(out, "%d) %s\n", idx+1, group.Name)
-	}
-	fmt.Fprint(out, "Choice: ")
-
-	reader := bufio.NewReader(in)
-	line, err := reader.ReadString('\n')
-	if err != nil && err != io.EOF {
-		return -1, err
-	}
-	choice, err := strconv.Atoi(strings.TrimSpace(line))
-	if err != nil || choice < 1 || choice > len(cfg.Groups) {
-		return -1, fmt.Errorf("invalid group selection")
+		items[idx] = group.Name
 	}
 
-	return choice - 1, nil
+	return selectPrompt("Select group", items, in, out)
 }

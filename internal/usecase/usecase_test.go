@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -22,6 +23,7 @@ const (
 	dockerApp   = "brew:docker"
 	lazygitApp  = "brew:lazygit"
 	macosList   = "macos"
+	guiGroup    = "gui"
 )
 
 type fakeManager struct {
@@ -199,8 +201,8 @@ func TestConvergeSupportsBrewCaskThroughBrewManager(t *testing.T) {
 	statePath := filepath.Join(dir, "bmxfile.state.toml")
 
 	cfg := config.File{
-		Lists:  []config.List{{Name: macosList, Groups: []string{"gui"}}},
-		Groups: []config.Group{{Name: "gui", Apps: []config.AppEntry{{App: mustApp(t, "brew-cask:gimp")}}}},
+		Lists:  []config.List{{Name: macosList, Groups: []string{guiGroup}}},
+		Groups: []config.Group{{Name: guiGroup, Apps: []config.AppEntry{{App: mustApp(t, "brew-cask:gimp")}}}},
 	}
 	if err := config.Write(configPath, cfg); err != nil {
 		t.Fatal(err)
@@ -437,6 +439,150 @@ func TestRemoveMissingAppDoesNotModifyConfig(t *testing.T) {
 	}
 	if string(got) != input {
 		t.Fatalf("config changed\nwant:\n%s\ngot:\n%s", input, got)
+	}
+}
+
+func TestConvergeDeclinesWithoutMutatingState(t *testing.T) {
+	t.Parallel()
+
+	for name, input := range map[string]io.Reader{
+		"negative": strings.NewReader("n\n"),
+		"EOF":      strings.NewReader(""),
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			configPath := filepath.Join(dir, "bmxfile.toml")
+			statePath := filepath.Join(dir, "bmxfile.state.toml")
+			cfg := config.File{
+				Lists:  []config.List{{Name: macosList, Groups: []string{coreGroup}}},
+				Groups: []config.Group{{Name: coreGroup, Apps: []config.AppEntry{{App: mustApp(t, dockerApp)}}}},
+			}
+			if err := config.Write(configPath, cfg); err != nil {
+				t.Fatal(err)
+			}
+
+			mgr := &fakeManager{}
+			out := &bytes.Buffer{}
+			if err := Converge(context.Background(), ConvergeInput{
+				PlanInput: PlanInput{ConfigPath: configPath, StatePath: statePath, ListName: macosList},
+				Managers:  backend.Registry{brewManager: mgr},
+				In:        input,
+				Out:       out,
+			}); err != nil {
+				t.Fatalf("Converge() error = %v", err)
+			}
+			if got := out.String(); !strings.Contains(got, "Aborted.\n") {
+				t.Fatalf("output = %q, want Aborted.", got)
+			}
+			if len(mgr.checks) != 0 || len(mgr.installs) != 0 || len(mgr.uninstalls) != 0 {
+				t.Fatalf("manager mutated: %+v", mgr)
+			}
+			if _, err := os.Stat(statePath); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("state file exists or could not be checked: %v", err)
+			}
+		})
+	}
+}
+
+func TestAddSelectsSecondGroup(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "bmxfile.toml")
+	cfg := config.File{
+		Groups: []config.Group{{Name: coreGroup}, {Name: guiGroup}},
+	}
+	if err := config.Write(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Add(context.Background(), AddInput{
+		ConfigPath: path,
+		AppName:    lazygitApp,
+		In:         strings.NewReader("j\n"),
+		Out:        &bytes.Buffer{},
+	}); err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+
+	reloaded, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reloaded.Groups[0].Apps) != 0 {
+		t.Fatalf("first group apps = %+v, want empty", reloaded.Groups[0].Apps)
+	}
+	if got := reloaded.Groups[1].Apps; len(got) != 1 || got[0].App.Name != lazygitApp {
+		t.Fatalf("second group apps = %+v, want %s", got, lazygitApp)
+	}
+}
+func TestListRenderingStyles(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "bmxfile.toml")
+	cfg := config.File{
+		Lists: []config.List{
+			{Name: macosList, Groups: []string{coreGroup, guiGroup}},
+			{Name: "core-only", Groups: []string{coreGroup}},
+		},
+		Groups: []config.Group{
+			{Name: coreGroup, Apps: []config.AppEntry{{App: mustApp(t, "brew:age")}, {App: mustApp(t, "brew:jq")}}},
+			{Name: guiGroup, Apps: []config.AppEntry{{App: mustApp(t, "brew-cask:gimp")}, {App: mustApp(t, "brew:jq")}}},
+		},
+	}
+	if err := config.Write(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name      string
+		listName  string
+		useStyles bool
+		want      string
+	}{
+		{
+			name: "full plain",
+			want: "Lists:\n- macos: core, gui\n- core-only: core\nGroups:\n- core\n  - brew:age\n  - brew:jq\n- gui\n  - brew-cask:gimp\n  - brew:jq\n",
+		},
+		{
+			name:      "full styled",
+			useStyles: true,
+			want:      "\x1b[36mLists:\x1b[0m\n- \x1b[3mmacos\x1b[0m: \x1b[3mcore\x1b[0m, \x1b[3mgui\x1b[0m\n- \x1b[3mcore-only\x1b[0m: \x1b[3mcore\x1b[0m\n\x1b[35mGroups:\x1b[0m\n- \x1b[3mcore\x1b[0m\n  - \x1b[1mbrew:age\x1b[0m\n  - \x1b[1mbrew:jq\x1b[0m\n- \x1b[3mgui\x1b[0m\n  - \x1b[1mbrew-cask:gimp\x1b[0m\n  - \x1b[1mbrew:jq\x1b[0m\n",
+		},
+		{
+			name:     "selected plain",
+			listName: macosList,
+			want:     "List macos\n- brew:age\n- brew:jq\n- brew-cask:gimp\n",
+		},
+		{
+			name:      "selected styled",
+			listName:  macosList,
+			useStyles: true,
+			want:      "\x1b[36mList\x1b[0m \x1b[3mmacos\x1b[0m\n- \x1b[1mbrew:age\x1b[0m\n- \x1b[1mbrew:jq\x1b[0m\n- \x1b[1mbrew-cask:gimp\x1b[0m\n",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			var out bytes.Buffer
+			if err := List(context.Background(), ListInput{
+				ConfigPath: path,
+				ListName:   test.listName,
+				Out:        &out,
+				UseStyles:  test.useStyles,
+			}); err != nil {
+				t.Fatalf("List() error = %v", err)
+			}
+			if got := out.String(); got != test.want {
+				t.Fatalf("List() output = %q, want %q", got, test.want)
+			}
+			if !test.useStyles && strings.Contains(out.String(), "\x1b") {
+				t.Fatalf("plain output contains ANSI escape: %q", out.String())
+			}
+		})
 	}
 }
 

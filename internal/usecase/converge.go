@@ -1,11 +1,9 @@
 package usecase
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/UsingCoding/bmx/internal/state"
 )
@@ -86,29 +84,8 @@ func renderPlan(out io.Writer, result PlanResult) {
 			fmt.Fprintf(out, "  - %s\n", app.Name)
 		}
 	}
-	if len(result.Plan.Keeps) > 0 {
-		fmt.Fprintln(out, "Keep:")
-		for _, app := range result.Plan.Keeps {
-			fmt.Fprintf(out, "    %s\n", app.Name)
-		}
-	}
 }
 
 func confirmApply(in io.Reader, out io.Writer) (bool, error) {
-	if _, err := fmt.Fprint(out, "Apply plan? [y/N]: "); err != nil {
-		return false, err
-	}
-
-	reader := bufio.NewReader(in)
-	line, err := reader.ReadString('\n')
-	if err != nil && err != io.EOF {
-		return false, err
-	}
-
-	switch strings.ToLower(strings.TrimSpace(line)) {
-	case "y", "yes":
-		return true, nil
-	default:
-		return false, nil
-	}
+	return confirmPrompt("Apply plan", in, out)
 }

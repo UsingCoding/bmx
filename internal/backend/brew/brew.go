@@ -4,15 +4,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os/exec"
 
+	"github.com/UsingCoding/bmx/internal/backend"
 	"github.com/UsingCoding/bmx/internal/model"
 )
 
-type Manager struct{}
+type Manager struct {
+	traceOut io.Writer
+}
 
-func New() *Manager {
-	return &Manager{}
+func New(traceOut io.Writer) *Manager {
+	return &Manager{traceOut: traceOut}
 }
 
 func (m *Manager) Installed(ctx context.Context, app model.App) (bool, error) {
@@ -24,6 +28,10 @@ func (m *Manager) Installed(ctx context.Context, app model.App) (bool, error) {
 		kind = "--cask"
 	default:
 		return false, fmt.Errorf("unsupported Homebrew app manager %q", app.Manager)
+	}
+
+	if err := backend.TraceCommand(m.traceOut, "brew", "list", kind, app.Package); err != nil {
+		return false, fmt.Errorf("trace brew list %s %s: %w", kind, app.Package, err)
 	}
 
 	err := exec.CommandContext(ctx, "brew", "list", kind, app.Package).Run()
@@ -44,6 +52,10 @@ func (m *Manager) Installed(ctx context.Context, app model.App) (bool, error) {
 
 func (m *Manager) Install(ctx context.Context, app model.App) error {
 	args := brewArgs("install", app)
+	if err := backend.TraceCommand(m.traceOut, "brew", args...); err != nil {
+		return fmt.Errorf("trace brew install %s: %w", app.Name, err)
+	}
+
 	cmd := exec.CommandContext(ctx, "brew", args...)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("brew install %s: %w: %s", app.Name, err, string(output))
@@ -54,7 +66,11 @@ func (m *Manager) Install(ctx context.Context, app model.App) error {
 
 func (m *Manager) Uninstall(ctx context.Context, app model.App) error {
 	args := brewArgs("uninstall", app)
+	if err := backend.TraceCommand(m.traceOut, "brew", args...); err != nil {
+		return fmt.Errorf("trace brew uninstall %s: %w", app.Name, err)
+	}
 	cmd := exec.CommandContext(ctx, "brew", args...)
+
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("brew uninstall %s: %w: %s", app.Name, err, string(output))
 	}

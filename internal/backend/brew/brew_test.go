@@ -1,8 +1,10 @@
 package brew
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,15 +14,20 @@ import (
 	"github.com/UsingCoding/bmx/internal/model"
 )
 
+const (
+	formulaManager = "brew"
+	formulaName    = "brew:jq"
+)
+
 func TestManagerInstalled(t *testing.T) {
-	app := model.App{Name: "brew:jq", Manager: "brew", Package: "jq"}
+	app := model.App{Name: formulaName, Manager: formulaManager, Package: "jq"}
 	caskApp := model.App{Name: "brew-cask:jq", Manager: "brew-cask", Package: "jq"}
 
 	t.Run("formula installed", func(t *testing.T) {
 		logPath := setupFakeBrew(t)
 		t.Setenv("BMX_FORMULA_EXIT", "0")
 
-		installed, err := New().Installed(context.Background(), app)
+		installed, err := New(io.Discard).Installed(context.Background(), app)
 		if err != nil {
 			t.Fatalf("Installed() error = %v", err)
 		}
@@ -36,7 +43,7 @@ func TestManagerInstalled(t *testing.T) {
 		logPath := setupFakeBrew(t)
 		t.Setenv("BMX_CASK_EXIT", "0")
 
-		installed, err := New().Installed(context.Background(), caskApp)
+		installed, err := New(io.Discard).Installed(context.Background(), caskApp)
 		if err != nil {
 			t.Fatalf("Installed() error = %v", err)
 		}
@@ -52,7 +59,7 @@ func TestManagerInstalled(t *testing.T) {
 		logPath := setupFakeBrew(t)
 		t.Setenv("BMX_FORMULA_EXIT", "1")
 
-		installed, err := New().Installed(context.Background(), app)
+		installed, err := New(io.Discard).Installed(context.Background(), app)
 		if err != nil {
 			t.Fatalf("Installed() error = %v", err)
 		}
@@ -67,7 +74,7 @@ func TestManagerInstalled(t *testing.T) {
 	t.Run("missing executable", func(t *testing.T) {
 		t.Setenv("PATH", t.TempDir())
 
-		installed, err := New().Installed(context.Background(), app)
+		installed, err := New(io.Discard).Installed(context.Background(), app)
 		if err == nil || !errors.Is(err, exec.ErrNotFound) {
 			t.Fatalf("Installed() error = %v, want wrapping exec.ErrNotFound", err)
 		}
@@ -81,7 +88,7 @@ func TestManagerInstalled(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		installed, err := New().Installed(ctx, app)
+		installed, err := New(io.Discard).Installed(ctx, app)
 		if err == nil || !errors.Is(err, context.Canceled) {
 			t.Fatalf("Installed() error = %v, want wrapping context.Canceled", err)
 		}
@@ -89,6 +96,52 @@ func TestManagerInstalled(t *testing.T) {
 			t.Fatal("Installed() installed = true, want false")
 		}
 	})
+}
+
+func TestManagerTracesCommands(t *testing.T) {
+	setupFakeBrew(t)
+	t.Setenv("BMX_FORMULA_EXIT", "0")
+	t.Setenv("BMX_CASK_EXIT", "0")
+	var trace bytes.Buffer
+	manager := New(&trace)
+	formula := model.App{Name: formulaName, Manager: formulaManager, Package: "jq"}
+	cask := model.App{Name: "brew-cask:jq", Manager: "brew-cask", Package: "jq"}
+
+	for _, app := range []model.App{formula, cask} {
+		if _, err := manager.Installed(context.Background(), app); err != nil {
+			t.Fatalf("Installed(%s) error = %v", app.Name, err)
+		}
+		if err := manager.Install(context.Background(), app); err != nil {
+			t.Fatalf("Install(%s) error = %v", app.Name, err)
+		}
+		if err := manager.Uninstall(context.Background(), app); err != nil {
+			t.Fatalf("Uninstall(%s) error = %v", app.Name, err)
+		}
+	}
+
+	want := "$ brew list --formula jq\n$ brew install jq\n$ brew uninstall jq\n$ brew list --cask jq\n$ brew install --cask jq\n$ brew uninstall --cask jq\n"
+	if got := trace.String(); got != want {
+		t.Fatalf("trace = %q, want %q", got, want)
+	}
+}
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) {
+	return 0, errors.New("trace write failed")
+}
+
+func TestManagerDoesNotRunWhenTraceFails(t *testing.T) {
+	logPath := setupFakeBrew(t)
+	app := model.App{Name: formulaName, Manager: formulaManager, Package: "jq"}
+
+	err := New(failingWriter{}).Install(context.Background(), app)
+	if err == nil || !strings.Contains(err.Error(), "trace write failed") {
+		t.Fatalf("Install() error = %v, want trace write failure", err)
+	}
+	if _, err := os.Stat(logPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("brew was invoked or log could not be checked: %v", err)
+	}
 }
 
 func setupFakeBrew(t *testing.T) string {
@@ -99,9 +152,14 @@ func setupFakeBrew(t *testing.T) string {
 	scriptPath := filepath.Join(dir, "brew")
 	script := `#!/bin/sh
 echo "$*" >> "$BMX_BREW_LOG"
-case "$2" in
-  --formula) exit "${BMX_FORMULA_EXIT:-1}" ;;
-  --cask) exit "${BMX_CASK_EXIT:-1}" ;;
+case "$1" in
+  list)
+    case "$2" in
+      --formula) exit "${BMX_FORMULA_EXIT:-1}" ;;
+      --cask) exit "${BMX_CASK_EXIT:-1}" ;;
+    esac
+    ;;
+  install|uninstall) exit "${BMX_MUTATION_EXIT:-0}" ;;
 esac
 exit 1
 `
