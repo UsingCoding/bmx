@@ -17,8 +17,9 @@ import (
 )
 
 const (
-	coreGroup = "core"
-	macosList = "macos"
+	coreGroup  = "core"
+	lazygitApp = "brew:lazygit"
+	macosList  = "macos"
 )
 
 type fakeManager struct {
@@ -178,7 +179,7 @@ func TestConvergeDoesNotWriteStateOnFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	original := state.FromApps(macosList, []model.App{mustApp(t, "brew:lazygit")})
+	original := state.FromApps(macosList, []model.App{mustApp(t, lazygitApp)})
 	if err := state.Write(statePath, original); err != nil {
 		t.Fatal(err)
 	}
@@ -237,6 +238,101 @@ func TestAddDuplicateDoesNotModifyConfig(t *testing.T) {
 	}
 	if !reflect.DeepEqual(cfg, reloaded) {
 		t.Fatalf("config changed on duplicate\nwant: %#v\ngot: %#v", cfg, reloaded)
+	}
+}
+
+//nolint:dupl // Add and Remove exercise distinct public contracts.
+func TestAddPreservesCommentedConfig(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "bmxfile.toml")
+	input := "# user-owned header\n[[groups]]\nname  = 'core'\ncustom = { enabled = true }\napps = [\n    'brew:git', # retain\n]\n"
+	want := "# user-owned header\n[[groups]]\nname  = 'core'\ncustom = { enabled = true }\napps = [\n    'brew:git', # retain\n    \"brew:lazygit\",\n]\n"
+	if err := os.WriteFile(path, []byte(input), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out := &bytes.Buffer{}
+	if err := Add(context.Background(), AddInput{
+		ConfigPath: path,
+		AppName:    lazygitApp,
+		GroupName:  coreGroup,
+		In:         strings.NewReader(""),
+		Out:        out,
+	}); err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+	if got := out.String(); got != "Added brew:lazygit to group core. Run `bmx converge` next.\n" {
+		t.Fatalf("output = %q", got)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != want {
+		t.Fatalf("config bytes differ\nwant:\n%s\ngot:\n%s", want, got)
+	}
+}
+
+//nolint:dupl // Add and Remove exercise distinct public contracts.
+func TestRemovePreservesCommentedConfig(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "bmxfile.toml")
+	want := "# user-owned header\n[[groups]]\nname  = 'core'\ncustom = { enabled = true }\napps = [\n    'brew:git', # retain\n]\n"
+	input := "# user-owned header\n[[groups]]\nname  = 'core'\ncustom = { enabled = true }\napps = [\n    'brew:git', # retain\n    \"brew:lazygit\",\n]\n"
+	if err := os.WriteFile(path, []byte(input), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out := &bytes.Buffer{}
+	if err := Remove(context.Background(), RemoveInput{
+		ConfigPath: path,
+		AppName:    lazygitApp,
+		GroupName:  coreGroup,
+		In:         strings.NewReader(""),
+		Out:        out,
+	}); err != nil {
+		t.Fatalf("Remove() error = %v", err)
+	}
+	if got := out.String(); got != "Removed brew:lazygit from group core. Run `bmx converge` next.\n" {
+		t.Fatalf("output = %q", got)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != want {
+		t.Fatalf("config bytes differ\nwant:\n%s\ngot:\n%s", want, got)
+	}
+}
+
+func TestRemoveMissingAppDoesNotModifyConfig(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "bmxfile.toml")
+	input := "[[groups]]\nname = \"core\"\napps = [\"brew:git\"]\n"
+	if err := os.WriteFile(path, []byte(input), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out := &bytes.Buffer{}
+	if err := Remove(context.Background(), RemoveInput{
+		ConfigPath: path,
+		AppName:    lazygitApp,
+		GroupName:  coreGroup,
+		In:         strings.NewReader(""),
+		Out:        out,
+	}); err != nil {
+		t.Fatalf("Remove() error = %v", err)
+	}
+	if got := out.String(); got != "brew:lazygit does not exist in group core\n" {
+		t.Fatalf("output = %q", got)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != input {
+		t.Fatalf("config changed\nwant:\n%s\ngot:\n%s", input, got)
 	}
 }
 

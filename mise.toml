@@ -3,7 +3,7 @@ go = "1.27"
 golangci-lint = "2.13.2"
 goreleaser = "2.12.5"
 
-[tasks.default]
+[tasks.all]
 run = [
     { task = "modules" },
     { task = "build" },

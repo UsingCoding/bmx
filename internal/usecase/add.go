@@ -46,8 +46,7 @@ func Add(ctx context.Context, input AddInput) error {
 		return err
 	}
 
-	cfg.Groups[groupIndex].Apps = append(cfg.Groups[groupIndex].Apps, config.AppEntry{App: app})
-	if err := config.Write(input.ConfigPath, cfg); err != nil {
+	if err := config.AppendApp(input.ConfigPath, cfg.Groups[groupIndex].Name, app); err != nil {
 		return err
 	}
 

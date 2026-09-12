@@ -27,6 +27,7 @@ func New(version, commit string) *cli.Command {
 			convergeCommand(),
 			listCommand(),
 			addCommand(),
+			removeCommand(),
 		},
 	}
 }
@@ -135,6 +136,35 @@ func addCommand() *cli.Command {
 			}
 
 			return usecase.Add(ctx, usecase.AddInput{
+				ConfigPath: resolved.ConfigPath,
+				AppName:    cmd.Args().First(),
+				GroupName:  cmd.String("group"),
+				In:         os.Stdin,
+				Out:        os.Stdout,
+			})
+		},
+	}
+}
+
+func removeCommand() *cli.Command {
+	flags := append(commonPathFlags(), &cli.StringFlag{Name: "group", Usage: "Group containing the app"})
+	return &cli.Command{
+		Name:      "rm",
+		Aliases:   []string{"remove"},
+		Usage:     "Remove package from desired config",
+		ArgsUsage: "<manager:package>",
+		Flags:     flags,
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			if cmd.Args().Len() != 1 {
+				return fmt.Errorf("expected exactly one package argument")
+			}
+
+			resolved, err := paths.Resolve(paths.Options{ConfigPath: cmd.String("config"), StatePath: cmd.String("state")})
+			if err != nil {
+				return err
+			}
+
+			return usecase.Remove(ctx, usecase.RemoveInput{
 				ConfigPath: resolved.ConfigPath,
 				AppName:    cmd.Args().First(),
 				GroupName:  cmd.String("group"),

@@ -13,6 +13,10 @@ func Load(path string) (File, error) {
 		return File{}, fmt.Errorf("read config %s: %w", path, err)
 	}
 
+	return decode(path, data)
+}
+
+func decode(path string, data []byte) (File, error) {
 	var cfg File
 	if err := toml.Unmarshal(data, &cfg); err != nil {
 		return File{}, fmt.Errorf("decode config %s: %w", path, err)
