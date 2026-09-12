@@ -17,16 +17,26 @@ import (
 )
 
 const (
-	coreGroup  = "core"
-	lazygitApp = "brew:lazygit"
-	macosList  = "macos"
+	brewManager = "brew"
+	coreGroup   = "core"
+	dockerApp   = "brew:docker"
+	lazygitApp  = "brew:lazygit"
+	macosList   = "macos"
 )
 
 type fakeManager struct {
+	checks     []model.App
 	installs   []model.App
 	uninstalls []model.App
+	installed  bool
+	statusErr  error
 	installErr error
 	removeErr  error
+}
+
+func (f *fakeManager) Installed(_ context.Context, app model.App) (bool, error) {
+	f.checks = append(f.checks, app)
+	return f.installed, f.statusErr
 }
 
 func (f *fakeManager) Install(_ context.Context, app model.App) error {
@@ -101,7 +111,7 @@ func TestConvergeAppliesPlanAndWritesState(t *testing.T) {
 
 	cfg := config.File{
 		Lists:  []config.List{{Name: macosList, Groups: []string{coreGroup}}},
-		Groups: []config.Group{{Name: coreGroup, Apps: []config.AppEntry{{App: mustApp(t, "brew:docker")}}}},
+		Groups: []config.Group{{Name: coreGroup, Apps: []config.AppEntry{{App: mustApp(t, dockerApp)}}}},
 	}
 	if err := config.Write(configPath, cfg); err != nil {
 		t.Fatal(err)
@@ -111,14 +121,14 @@ func TestConvergeAppliesPlanAndWritesState(t *testing.T) {
 	out := &bytes.Buffer{}
 	err := Converge(context.Background(), ConvergeInput{
 		PlanInput: PlanInput{ConfigPath: configPath, StatePath: statePath, ListName: macosList},
-		Managers:  backend.Registry{"brew": mgr},
+		Managers:  backend.Registry{brewManager: mgr},
 		In:        strings.NewReader("y\n"),
 		Out:       out,
 	})
 	if err != nil {
 		t.Fatalf("Converge() error = %v", err)
 	}
-	if len(mgr.installs) != 1 || mgr.installs[0].Name != "brew:docker" {
+	if len(mgr.installs) != 1 || mgr.installs[0].Name != dockerApp {
 		t.Fatalf("unexpected installs: %+v", mgr.installs)
 	}
 
@@ -129,7 +139,54 @@ func TestConvergeAppliesPlanAndWritesState(t *testing.T) {
 	if st.ActiveList != macosList {
 		t.Fatalf("unexpected active list: %q", st.ActiveList)
 	}
-	if got := st.InstalledApps(); len(got) != 1 || got[0].Name != "brew:docker" {
+	if got := st.InstalledApps(); len(got) != 1 || got[0].Name != dockerApp {
+		t.Fatalf("unexpected persisted apps: %+v", got)
+	}
+}
+
+func TestConvergeSkipsAlreadyInstalledPackageAndWritesState(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "bmxfile.toml")
+	statePath := filepath.Join(dir, "bmxfile.state.toml")
+	cfg := config.File{
+		Lists:  []config.List{{Name: macosList, Groups: []string{coreGroup}}},
+		Groups: []config.Group{{Name: coreGroup, Apps: []config.AppEntry{{App: mustApp(t, dockerApp)}}}},
+	}
+	if err := config.Write(configPath, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	mgr := &fakeManager{installed: true}
+	out := &bytes.Buffer{}
+	err := Converge(context.Background(), ConvergeInput{
+		PlanInput: PlanInput{ConfigPath: configPath, StatePath: statePath, ListName: macosList},
+		Managers:  backend.Registry{brewManager: mgr},
+		In:        strings.NewReader("y\n"),
+		Out:       out,
+	})
+	if err != nil {
+		t.Fatalf("Converge() error = %v", err)
+	}
+	if len(mgr.checks) != 1 || mgr.checks[0].Name != dockerApp {
+		t.Fatalf("unexpected checks: %+v", mgr.checks)
+	}
+	if len(mgr.installs) != 0 {
+		t.Fatalf("unexpected installs: %+v", mgr.installs)
+	}
+	if strings.Contains(out.String(), "Installing brew:docker") {
+		t.Fatalf("output included install for an installed app: %s", out.String())
+	}
+	if !strings.Contains(out.String(), "Converge complete.") {
+		t.Fatalf("output missing completion: %s", out.String())
+	}
+
+	st, err := state.Load(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := st.InstalledApps(); len(got) != 1 || got[0].Name != dockerApp {
 		t.Fatalf("unexpected persisted apps: %+v", got)
 	}
 }
@@ -173,7 +230,7 @@ func TestConvergeDoesNotWriteStateOnFailure(t *testing.T) {
 
 	cfg := config.File{
 		Lists:  []config.List{{Name: macosList, Groups: []string{coreGroup}}},
-		Groups: []config.Group{{Name: coreGroup, Apps: []config.AppEntry{{App: mustApp(t, "brew:docker")}}}},
+		Groups: []config.Group{{Name: coreGroup, Apps: []config.AppEntry{{App: mustApp(t, dockerApp)}}}},
 	}
 	if err := config.Write(configPath, cfg); err != nil {
 		t.Fatal(err)
@@ -191,7 +248,7 @@ func TestConvergeDoesNotWriteStateOnFailure(t *testing.T) {
 	mgr := &fakeManager{installErr: errors.New("boom")}
 	err = Converge(context.Background(), ConvergeInput{
 		PlanInput: PlanInput{ConfigPath: configPath, StatePath: statePath, ListName: macosList},
-		Managers:  backend.Registry{"brew": mgr},
+		Managers:  backend.Registry{brewManager: mgr},
 		In:        strings.NewReader("y\n"),
 		Out:       &bytes.Buffer{},
 	})
@@ -205,6 +262,53 @@ func TestConvergeDoesNotWriteStateOnFailure(t *testing.T) {
 	}
 	if !bytes.Equal(before, after) {
 		t.Fatalf("state file changed on failure\nbefore:\n%s\nafter:\n%s", before, after)
+	}
+}
+
+func TestConvergeDoesNotWriteStateOnInstalledCheckFailure(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "bmxfile.toml")
+	statePath := filepath.Join(dir, "bmxfile.state.toml")
+	cfg := config.File{
+		Lists:  []config.List{{Name: macosList, Groups: []string{coreGroup}}},
+		Groups: []config.Group{{Name: coreGroup, Apps: []config.AppEntry{{App: mustApp(t, dockerApp)}}}},
+	}
+	if err := config.Write(configPath, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	original := state.FromApps(macosList, []model.App{mustApp(t, lazygitApp)})
+	if err := state.Write(statePath, original); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	statusErr := errors.New("status check failed")
+	mgr := &fakeManager{statusErr: statusErr}
+	err = Converge(context.Background(), ConvergeInput{
+		PlanInput: PlanInput{ConfigPath: configPath, StatePath: statePath, ListName: macosList},
+		Managers:  backend.Registry{brewManager: mgr},
+		In:        strings.NewReader("y\n"),
+		Out:       &bytes.Buffer{},
+	})
+	if !errors.Is(err, statusErr) {
+		t.Fatalf("Converge() error = %v, want wrapping %v", err, statusErr)
+	}
+	if len(mgr.installs) != 0 {
+		t.Fatalf("unexpected installs: %+v", mgr.installs)
+	}
+
+	after, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatalf("state file changed on status check failure\nbefore:\n%s\nafter:\n%s", before, after)
 	}
 }
 

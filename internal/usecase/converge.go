@@ -49,6 +49,13 @@ func Converge(ctx context.Context, input ConvergeInput) error {
 		if err != nil {
 			return err
 		}
+		installed, err := manager.Installed(ctx, app)
+		if err != nil {
+			return err
+		}
+		if installed {
+			continue
+		}
 		if _, err := fmt.Fprintf(input.Out, "Installing %s\n", app.Name); err != nil {
 			return err
 		}

@@ -8,6 +8,7 @@ import (
 )
 
 type Manager interface {
+	Installed(ctx context.Context, app model.App) (bool, error)
 	Install(ctx context.Context, app model.App) error
 	Uninstall(ctx context.Context, app model.App) error
 }
