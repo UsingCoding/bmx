@@ -97,7 +97,7 @@ func runConverge(ctx context.Context, resolved paths.Resolved, listName string) 
 			StatePath:  resolved.StatePath,
 			ListName:   listName,
 		},
-		Managers: defaultRegistry(os.Stderr),
+		Managers: defaultRegistry(os.Stdin, os.Stdout, os.Stderr),
 		In:       os.Stdin,
 		Out:      os.Stdout,
 	})
@@ -201,8 +201,8 @@ func removeCommand() *cli.Command {
 	}
 }
 
-func defaultRegistry(traceOut io.Writer) backend.Registry {
-	brewManager := brewbackend.New(traceOut)
+func defaultRegistry(in io.Reader, out, errOut io.Writer) backend.Registry {
+	brewManager := brewbackend.New(in, out, errOut)
 	return backend.Registry{
 		"brew":      brewManager,
 		"brew-cask": brewManager,

@@ -61,6 +61,12 @@ bmx converge --list macos
 5. apply changes
 6. update the state file on success
 
+Homebrew installs and uninstalls stream progress to stdout and diagnostics to stderr.
+They inherit stdin and the caller's terminal, so Homebrew can prompt interactively
+after plan approval. Redirected streams remain redirected; `bmx` does not allocate
+a pseudo-terminal. If a Homebrew command fails, its diagnostics are shown once and
+the state file is left unchanged.
+
 ## CLI Usage
 
 ```bash
