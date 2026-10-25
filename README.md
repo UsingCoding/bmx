@@ -77,8 +77,13 @@ bmx remove <manager:package> [--config PATH] [--state PATH] [--group NAME] [--co
 bmx ls [list-name] [--config PATH]
 bmx converge [--config PATH] [--state PATH] [--list NAME]
 bmx version
+```
 
 ## Build
+
+Install the pinned tools with `mise install`: Go 1.27.3 and golangci-lint
+2.15.0 provide a compatible compiler/linter pairing. Run `mise run test` for
+the same Go tests and lint checks used by the release workflow.
 
 Preferred:
 
