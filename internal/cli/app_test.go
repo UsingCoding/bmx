@@ -18,7 +18,7 @@ const coreGroup = "core"
 func TestDefaultRegistrySupportsBrewAndBrewCask(t *testing.T) {
 	t.Parallel()
 
-	registry := defaultRegistry(io.Discard)
+	registry := defaultRegistry(nil, io.Discard, io.Discard)
 	brewManager, ok := registry["brew"]
 	if !ok {
 		t.Fatal("brew manager missing")
